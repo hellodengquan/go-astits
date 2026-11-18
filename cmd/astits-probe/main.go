@@ -36,7 +36,7 @@ func main() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage of %s <data|packets|default>:\n", os.Args[0])
 		flag.PrintDefaults()
 	}
-	flag.Var(dataTypes, "d", "the datatypes whitelist (all, pat, pmt, pes, eit, nit, sdt, tot)")
+	flag.Var(dataTypes, "d", "the datatypes whitelist (all, pat, pmt, pes, eit, nit, scte35, sdt, tot)")
 	cmd := astikit.FlagCmd()
 	flag.Parse()
 
@@ -200,7 +200,7 @@ func packets(dmx *astits.Demuxer) (err error) {
 
 func data(dmx *astits.Demuxer) (err error) {
 	// Determine which data to log
-	var logAll, logEIT, logNIT, logPAT, logPES, logPMT, logSDT, logTOT bool
+	var logAll, logEIT, logNIT, logPAT, logPES, logPMT, logSCTE35, logSDT, logTOT bool
 	if _, ok := dataTypes.Map["all"]; ok {
 		logAll = true
 	}
@@ -218,6 +218,9 @@ func data(dmx *astits.Demuxer) (err error) {
 	}
 	if _, ok := dataTypes.Map["pmt"]; ok {
 		logPMT = true
+	}
+	if _, ok := dataTypes.Map["scte35"]; ok {
+		logSCTE35 = true
 	}
 	if _, ok := dataTypes.Map["sdt"]; ok {
 		logSDT = true
@@ -268,6 +271,16 @@ func data(dmx *astits.Demuxer) (err error) {
 			log.Println("  Program Descriptors:")
 			for _, d := range d.PMT.ProgramDescriptors {
 				log.Printf("    %+v\n", d)
+			}
+		} else if (d.SCTE35 != nil || d.SCTE35Error != nil) && (logAll || logSCTE35) {
+			log.Printf("SCTE-35: %d\n", d.PID)
+			if d.SCTE35Error != nil {
+				log.Printf("  Error: %v\n", d.SCTE35Error)
+			}
+			if d.SCTE35 != nil {
+				log.Printf("  PTS Adjustment: %d\n", d.SCTE35.PTSAdjustment)
+				log.Printf("  Splice Command: %+v\n", d.SCTE35.SpliceCommand)
+				log.Printf("  Splice Descriptors: %+v\n", d.SCTE35.Descriptors)
 			}
 		} else if d.SDT != nil && (logAll || logSDT) {
 			log.Printf("SDT: %d\n", d.PID)

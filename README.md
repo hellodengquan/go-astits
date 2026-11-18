@@ -83,6 +83,41 @@ for {
 }
 ```
 
+## SCTE-35 splice information
+
+Streams declared as SCTE-35 in the PMT (through the `0x86` stream type or a `CUEI` registration
+descriptor) are demuxed into structured splice information and delivered as soon as their section is
+complete. `SpliceTime.AdjustedPTSTime` already accounts for the section `pts_adjustment` (wrapping on
+33 bits), so it is the actual presentation time:
+
+```go
+for {
+    d, _ := dmx.NextData()
+
+    // A corrupted or unsupported section is reported on its own and doesn't stop the demuxer
+    if d.SCTE35Error != nil {
+        log.Println(d.SCTE35Error)
+        continue
+    }
+
+    if d.SCTE35 == nil {
+        continue
+    }
+
+    switch c := d.SCTE35.SpliceCommand.(type) {
+    case *astits.SCTE35SpliceInsert:
+        if c.BreakDuration != nil {
+            fmt.Printf("Break of %s, auto return: %t\n", c.BreakDuration.Time(), c.BreakDuration.AutoReturn)
+        }
+        if c.SpliceTime != nil {
+            fmt.Printf("Splice at %s\n", c.SpliceTime.Duration())
+        }
+    case *astits.SCTE35TimeSignal:
+        fmt.Printf("Time signal at %s\n", c.SpliceTime.Duration())
+    }
+}
+```
+
 ## Mux
 
 ```go
@@ -182,6 +217,7 @@ This library provides 2 CLIs that will automatically get installed in `GOPATH/bi
 - [ ] Mux SDT packets
 - [x] Demux TOT packets
 - [ ] Mux TOT packets
+- [x] Demux SCTE-35 splice information
 - [ ] Demux BAT packets
 - [ ] Mux BAT packets
 - [ ] Demux DIT packets

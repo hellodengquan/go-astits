@@ -23,6 +23,8 @@ type DemuxerData struct {
 	PES         *PESData
 	PID         uint16
 	PMT         *PMTData
+	SCTE35      *SCTE35Data
+	SCTE35Error error // Set when a SCTE-35 splice information section couldn't be interpreted
 	SDT         *SDTData
 	TOT         *TOTData
 }
@@ -79,6 +81,18 @@ func parseData(ps []*Packet, prs PacketsParser, pm *programMap, esm *elementaryS
 	if pid == PIDCAT {
 		// Information in a CAT payload is private and dependent on the CA system. Use the PacketsParser
 		// to parse this type of payload
+	} else if esm.isSCTE35Unlocked(pid) && !isPESPayload(payload.s) {
+		// Parse SCTE-35 data. Splice information sections don't use the PSI syntax header and must
+		// be routed before the generic PSI/PES checks. Some deployments wrap the splice
+		// information in PES packets instead: those keep going through the PES parser.
+		scte35Data, scte35Errs := parseSCTE35Data(i)
+
+		// Append one data per section: a corrupted section is reported on its own and doesn't
+		// prevent the delivery of the other sections of the payload.
+		ds = make([]*DemuxerData, 0, len(scte35Data))
+		for j, sd := range scte35Data {
+			ds = append(ds, &DemuxerData{FirstPacket: fp, PID: pid, SCTE35: sd, SCTE35Error: scte35Errs[j]})
+		}
 	} else if isPSIPayload(pid, pm, esm) {
 		// Parse PSI data
 		var psiData *PSIData
