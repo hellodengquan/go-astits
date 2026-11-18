@@ -105,11 +105,12 @@ defer f.Close()
 // Create the muxer
 mx := astits.NewMuxer(ctx, f)
 
-// Add an elementary stream
+// Add an elementary stream to the default program
 mx.AddElementaryStream(astits.PMTElementaryStream{
-    ElementaryPID: 1,
+    ElementaryPID: 0x0100,
     StreamType:    astits.StreamTypeMetadata,
 })
+mx.SetPCRPID(0x0100)
 
 // Write tables
 // Using that function is not mandatory, WriteData will retransmit tables from time to time 
@@ -120,9 +121,39 @@ mx.WriteData(&astits.MuxerData{
     PES: &astits.PESData{
         Data: []byte("test"),
     },
-    PID: 1,
+    PID: 0x0100,
 })
 ```
+
+### Muxing multiple programs
+
+A single transport stream can carry several programs. Each program owns its program number, its PMT
+and its PCR PID, and its tables are retransmitted on its own media clock. The historical
+`AddElementaryStream`, `RemoveElementaryStream` and `SetPCRPID` methods keep working unchanged: they
+operate on the default program, which is the only program of a single-program stream.
+
+```go
+mx := astits.NewMuxer(ctx, f)
+
+// Default program
+mx.AddElementaryStream(astits.PMTElementaryStream{ElementaryPID: 0x0100, StreamType: astits.StreamTypeH264Video})
+mx.SetPCRPID(0x0100)
+
+// A second program with an automatically assigned PMT PID
+program, _ := mx.AddProgram(astits.MuxerProgramConfig{ProgramNumber: 2})
+program.AddElementaryStream(astits.PMTElementaryStream{ElementaryPID: 0x0200, StreamType: astits.StreamTypeAACAudio})
+program.SetPCRPID(0x0200)
+
+// The PAT lists every program and every program gets its own PMT
+mx.WriteTables()
+
+// Data is routed to the program owning the elementary stream
+mx.WriteData(&astits.MuxerData{PID: 0x0200, PES: &astits.PESData{Data: []byte("audio")}})
+```
+
+When `MuxerProgramConfig.PMTPID` or `PMTElementaryStream.ElementaryPID` is left to zero, the muxer
+picks a PID that stays outside the reserved ranges (`0x0000`-`0x001F` and `0x1FFF`) and that is not
+already used by another program map or elementary stream of the transport stream.
 
 ## Options
 
